@@ -907,15 +907,12 @@ function renderAccounts(container) {
         <tbody>
           ${DATA.accounts.map((acc, idx) => `
             <tr>
-              <td>
-                <a href="#" onclick="drillDownAccount('${acc.Name}')">${acc.Name}</a>
-              </td>
+              <td>${acc.Name}</td>
               <td>${acc.Type}</td>
               <td class="text-right">${formatCurrency(acc.OpeningBalance)}</td>
               <td class="text-right">${formatCurrency(getAccountBalance(acc.Name))}</td>
               <td>${acc.Notes || ''}</td>
               <td class="text-center">
-                <button class="btn btn-small btn-secondary" onclick="editAccount(${idx})">Edit</button>
                 <button class="btn btn-small btn-danger" onclick="deleteAccount(${idx})">Delete</button>
               </td>
             </tr>
@@ -927,7 +924,6 @@ function renderAccounts(container) {
   `;
 }
 
-// ✅ Add Account
 function addAccount() {
   const name = document.getElementById('accName').value.trim();
   const type = document.getElementById('accType').value;
@@ -935,11 +931,6 @@ function addAccount() {
 
   if (!name) {
     toast('Please enter account name', 'error');
-    return;
-  }
-
-  if (DATA.accounts.some(a => a.Name.toLowerCase() === name.toLowerCase())) {
-    toast('Account already exists', 'error');
     return;
   }
 
@@ -954,26 +945,6 @@ function addAccount() {
   renderView('accounts');
 }
 
-// ✅ Edit Account (inline modal prompt)
-function editAccount(idx) {
-  const acc = DATA.accounts[idx];
-  const name = prompt('Account Name:', acc.Name);
-  if (!name) return;
-
-  const type = prompt('Account Type (Asset, Liability, Equity, Income, Expense):', acc.Type);
-  const opening = parseFloat(prompt('Opening Balance:', acc.OpeningBalance)) || 0;
-  const notes = prompt('Notes:', acc.Notes || '');
-
-  acc.Name = name;
-  acc.Type = type;
-  acc.OpeningBalance = opening;
-  acc.Notes = notes;
-
-  toast('Account updated');
-  renderView('accounts');
-}
-
-// ✅ Delete Account
 function deleteAccount(idx) {
   const account = DATA.accounts[idx];
   const used = DATA.journalEntries.some(e => e.Account === account.Name);
@@ -990,146 +961,27 @@ function deleteAccount(idx) {
   }
 }
 
-// Ledger drilldown with date filter + export
-function drillDownAccount(accountName) {
-  const container = document.getElementById("app");
-
-  // global filter vars
-  const from = new Date(localStorage.getItem("ledgerFrom") || "1900-01-01");
-  const to = new Date(localStorage.getItem("ledgerTo") || "9999-12-31");
-
-  const filtered = DATA.journalEntries.filter(e => {
-    if (e.Account !== accountName) return false;
-    const d = new Date(e.Date);
-    return d >= from && d <= to;
+function getAccountBalance(accountName) {
+  const account = DATA.accounts.find(a => a.Name === accountName);
+  const opening = account ? (account.OpeningBalance || 0) : 0;
+  
+  let balance = opening;
+  DATA.journalEntries.forEach(entry => {
+    if (entry.Account === accountName) {
+      const debit = parseFloat(entry.Debit) || 0;
+      const credit = parseFloat(entry.Credit) || 0;
+      
+      if (account && ['Asset', 'Expense'].includes(account.Type)) {
+        balance += debit - credit;
+      } else {
+        balance += credit - debit;
+      }
+    }
   });
-
-  container.innerHTML = `
-    <div class="card">
-      <div class="card-title">
-        Ledger: ${accountName}
-        <div style="float:right;">
-          <label>From <input type="date" id="ledgerFrom"></label>
-          <label>To <input type="date" id="ledgerTo"></label>
-          <button class="btn btn-small btn-primary" onclick="applyLedgerFilter('${accountName}')">Filter</button>
-          <button class="btn btn-small" onclick="exportLedgerToExcel('${accountName}')">Export</button>
-        </div>
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Date</th><th>Voucher</th><th>Description</th>
-            <th class="text-right">Debit</th>
-            <th class="text-right">Credit</th>
-            <th class="text-right">Balance</th>
-          </tr>
-        </thead>
-        <tbody>${renderLedgerRows(accountName, filtered)}</tbody>
-      </table>
-      <button class="btn btn-small" onclick="renderView('accounts')">← Back</button>
-    </div>
-  `;
-
-  document.getElementById("ledgerFrom").value = from.toISOString().slice(0, 10);
-  document.getElementById("ledgerTo").value = to.toISOString().slice(0, 10);
+  
+  return balance;
 }
 
-   function applyLedgerFilter(accountName) {
-  const from = document.getElementById("ledgerFrom").value;
-  const to = document.getElementById("ledgerTo").value;
-  localStorage.setItem("ledgerFrom", from);
-  localStorage.setItem("ledgerTo", to);
-  drillDownAccount(accountName);
-}
-
-function exportLedgerToExcel(accountName) {
-  const entries = DATA.journalEntries.filter(e => e.Account === accountName);
-  const sheetData = [["Date","Voucher","Description","Debit","Credit"]];
-  entries.forEach(e => sheetData.push([e.Date,e.VoucherNo,e.Description,e.Debit,e.Credit]));
-  const ws = XLSX.utils.aoa_to_sheet(sheetData);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, accountName.slice(0,30));
-  XLSX.writeFile(wb, `${accountName}_Ledger.xlsx`);
-}
-
-function renderLedgerRows(accountName, entries) {
-  let balance = 0;
-  const acc = DATA.accounts.find(a => a.Name === accountName);
-  const isDebitType = acc && ["Asset","Expense"].includes(acc.Type);
-  let rows = "";
-
-  entries.forEach(e => {
-    const debit = +e.Debit || 0;
-    const credit = +e.Credit || 0;
-    balance += isDebitType ? debit - credit : credit - debit;
-    rows += `
-      <tr onclick="openJournalEntry('${e.VoucherNo || ""}')">
-        <td>${e.Date}</td>
-        <td>${e.VoucherNo || ""}</td>
-        <td>${e.Description || ""}</td>
-        <td class="text-right">${debit ? formatCurrency(debit) : ""}</td>
-        <td class="text-right">${credit ? formatCurrency(credit) : ""}</td>
-        <td class="text-right">${formatCurrency(balance)}</td>
-      </tr>
-    `;
-  });
-
-  return rows || `<tr><td colspan="6" class="text-center">No entries in range.</td></tr>`;
-}
-
-// ✅ Open specific Journal Entry (placeholder)
-// Editable Journal modal
-function openJournalEntry(voucherNo) {
-  const entries = DATA.journalEntries.filter(e => e.VoucherNo === voucherNo);
-  if (!entries.length) { toast("Journal entry not found","error"); return; }
-
-  const linesHTML = entries.map((e,i)=>`
-    <tr>
-      <td><input value="${e.Account}" id="jAcc${i}"></td>
-      <td><input type="number" value="${e.Debit||0}" id="jDeb${i}"></td>
-      <td><input type="number" value="${e.Credit||0}" id="jCre${i}"></td>
-      <td>${e.Description||""}</td>
-    </tr>`).join("");
-
-  const modal = document.createElement("div");
-  modal.className="modal";
-  modal.innerHTML = `
-    <div class="modal-content">
-      <h3>Journal: ${voucherNo}</h3>
-      <table>
-        <thead><tr><th>Account</th><th>Debit</th><th>Credit</th><th>Description</th></tr></thead>
-        <tbody>${linesHTML}</tbody>
-      </table>
-      <button class="btn btn-primary" onclick="saveJournalEdits('${voucherNo}')">Save</button>
-      <button class="btn btn-danger" onclick="deleteJournal('${voucherNo}')">Delete</button>
-      <button class="btn btn-small" onclick="closeModal(this)">Close</button>
-    </div>
-  `;
-  document.body.appendChild(modal);
-}
-   
-function saveJournalEdits(voucherNo) {
-  const lines = DATA.journalEntries.filter(e => e.VoucherNo === voucherNo);
-  lines.forEach((e,i)=>{
-    e.Account = document.getElementById(`jAcc${i}`).value;
-    e.Debit = +document.getElementById(`jDeb${i}`).value;
-    e.Credit = +document.getElementById(`jCre${i}`).value;
-  });
-  toast("Journal updated");
-  closeAllModals();
-  renderView("accounts");
-}
-
-function deleteJournal(voucherNo){
-  if(!confirm("Delete this journal completely?")) return;
-  DATA.journalEntries = DATA.journalEntries.filter(e => e.VoucherNo !== voucherNo);
-  toast("Journal deleted");
-  closeAllModals();
-  renderView("accounts");
-}
-
-function closeModal(btn){ btn.closest(".modal").remove(); }
-function closeAllModals(){ document.querySelectorAll(".modal").forEach(m=>m.remove()); }
 /* ============================================================
    JOURNAL, BULK, SALES, PURCHASES, PAYMENTS, CUSTOMERS, SUPPLIERS, INVENTORY SECTIONS
    ============================================================ */
