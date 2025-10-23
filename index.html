@@ -530,6 +530,23 @@ function parseAmount(str) {
   return parseFloat(String(str).replace(/[^\d.-]/g, '')) || 0;
 }
 
+
+   function getAccountType(accountName) {
+  // First, look in the main chart of accounts
+  const acc = DATA.accounts.find(a => a.Name === accountName);
+  if (acc) return acc.Type;
+
+  // Handle known logical categories
+  if (accountName.includes('Customer') || accountName.includes('Receivable')) return 'Asset';
+  if (accountName.includes('Supplier') || accountName.includes('Payable')) return 'Liability';
+  if (accountName.includes('Sales') || accountName.includes('Revenue')) return 'Income';
+  if (accountName.includes('Expense') || accountName.includes('Cost')) return 'Expense';
+  if (accountName.includes('Bank') || accountName.includes('Cash')) return 'Asset';
+
+  // Default fallback
+  return 'Asset';
+}
+
 /* ============================================================
    THEME TOGGLE
    ============================================================ */
@@ -1751,10 +1768,14 @@ function renderCustomers(container) {
               <td>${cust.Contact || ''}</td>
               <td class="text-right">${formatCurrency(cust.OpeningBalance || 0)}</td>
               <td class="text-right">${formatCurrency(getCustomerBalance(cust.Name))}</td>
-              <td class="text-center">
-                <button class="btn btn-small" onclick="viewCustomerStatement('${cust.Name}')">Statement</button>
-                <button class="btn btn-small btn-danger" onclick="deleteCustomer(${idx})">Delete</button>
-              </td>
+           <td class="text-center">
+  <button class="btn btn-small" onclick="viewCustomerStatement('${cust.Name}')">Statement</button>
+  <button class="btn btn-small btn-success" onclick="createInvoice('${cust.Name}')">Invoice</button>
+  <button class="btn btn-small btn-primary" onclick="receivePayment('${cust.Name}')">Receive Payment</button>
+  <button class="btn btn-small btn-danger" onclick="deleteCustomer(${idx})">Delete</button>
+</td>
+
+        
             </tr>
           `).join('')}
         </tbody>
@@ -1805,9 +1826,111 @@ function getCustomerBalance(customerName) {
   return balance;
 }
 
-function viewCustomerStatement(customerName) {
-  alert(`Customer Statement for ${customerName}\n\nBalance: ${formatCurrency(getCustomerBalance(customerName))}\n\n(Full aging report coming soon)`);
+function createInvoice(customerName) {
+  const date = prompt("Invoice Date (YYYY-MM-DD)", new Date().toISOString().split('T')[0]);
+  const amount = parseFloat(prompt("Invoice Amount", "0"));
+  if (!date || !customerName || !amount) return toast('Invoice not created', 'error');
+
+  const arAccount = DATA.accounts.find(a => a.Name.includes('Receivable'));
+  const salesAccount = DATA.accounts.find(a => a.Type === 'Income');
+
+  const entryID = uid();
+  const voucherNo = `INV-${date.replace(/-/g,'')}-${entryID.slice(0,6)}`;
+
+  DATA.journalEntries.push({
+    EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 1,
+    Account: arAccount.Name, Debit: amount, Credit: 0,
+    Customer: customerName, Supplier: '', ItemCode: '',
+    Description: `Invoice to ${customerName}`, Module: 'Invoice'
+  });
+
+  DATA.journalEntries.push({
+    EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 2,
+    Account: salesAccount.Name, Debit: 0, Credit: amount,
+    Customer: customerName, Supplier: '', ItemCode: '',
+    Description: `Invoice to ${customerName}`, Module: 'Invoice'
+  });
+
+  toast('Invoice created');
+  renderView('customers');
 }
+
+function receivePayment(customerName) {
+  const date = prompt("Payment Date (YYYY-MM-DD)", new Date().toISOString().split('T')[0]);
+  const amount = parseFloat(prompt("Payment Amount", "0"));
+  if (!date || !customerName || !amount) return toast('Payment not posted', 'error');
+
+  const cashAccount = DATA.accounts.find(a => a.Name === 'Cash' || a.Name === 'Bank');
+  const arAccount = DATA.accounts.find(a => a.Name.includes('Receivable'));
+
+  const entryID = uid();
+  const voucherNo = `RCV-${date.replace(/-/g,'')}-${entryID.slice(0,6)}`;
+
+  DATA.journalEntries.push({
+    EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 1,
+    Account: cashAccount.Name, Debit: amount, Credit: 0,
+    Customer: customerName, Supplier: '', ItemCode: '',
+    Description: `Payment received from ${customerName}`, Module: 'Payment'
+  });
+
+  DATA.journalEntries.push({
+    EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 2,
+    Account: arAccount.Name, Debit: 0, Credit: amount,
+    Customer: customerName, Supplier: '', ItemCode: '',
+    Description: `Payment received from ${customerName}`, Module: 'Payment'
+  });
+
+  toast('Payment received');
+  renderView('customers');
+}
+
+
+function viewCustomerStatement(customerName) {
+  const entries = DATA.journalEntries
+    .filter(e => e.Customer === customerName)
+    .sort((a, b) => new Date(a.Date) - new Date(b.Date));
+
+  let html = `<h3>Customer Statement: ${customerName}</h3>`;
+  html += `<table>
+    <thead>
+      <tr>
+        <th>Date</th><th>Voucher</th><th>Description</th>
+        <th class="text-right">Debit</th><th class="text-right">Credit</th>
+        <th class="text-right">Balance</th><th>Action</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+  let balance = 0;
+
+  entries.forEach(entry => {
+    const debit = parseFloat(entry.Debit) || 0;
+    const credit = parseFloat(entry.Credit) || 0;
+
+    if (['Asset', 'Expense'].includes(getAccountType(entry.Account))) {
+      balance += debit - credit;
+    } else {
+      balance += credit - debit;
+    }
+
+    html += `<tr>
+      <td>${entry.Date}</td>
+      <td>${entry.VoucherNo}</td>
+      <td>${entry.Description}</td>
+      <td class="text-right">${formatCurrency(debit)}</td>
+      <td class="text-right">${formatCurrency(credit)}</td>
+      <td class="text-right">${formatCurrency(balance)}</td>
+      <td><button class="btn btn-small" onclick="showJournalEntry('${entry.EntryID}')">View</button></td>
+    </tr>`;
+  });
+
+  html += `</tbody></table>`;
+  html += `<button class="btn mt-2" onclick="renderView('customers')">Back</button>`;
+
+  const container = document.getElementById('modalContainer') || document.body;
+  container.innerHTML = `<div class="modal show">${html}<span class="close-modal" onclick="closeModal()">×</span></div>`;
+}
+
 
 /* ============================================================
    SUPPLIERS VIEW
@@ -1822,6 +1945,9 @@ function renderSuppliers(container) {
         <input type="text" id="suppContact" placeholder="Contact person">
         <input type="number" id="suppOpeningBalance" placeholder="Opening balance" step="0.01">
         <button class="btn btn-primary" onclick="addSupplier()">Add Supplier</button>
+        <button class="btn btn-small btn-success" onclick="createBill('${supp.Name}')">Bill</button>
+        <button class="btn btn-small btn-primary" onclick="makePayment('${supp.Name}')">Payment</button>
+
       </div>
 
       <table>
@@ -1841,10 +1967,14 @@ function renderSuppliers(container) {
               <td>${supp.Contact || ''}</td>
               <td class="text-right">${formatCurrency(supp.OpeningBalance || 0)}</td>
               <td class="text-right">${formatCurrency(getSupplierBalance(supp.Name))}</td>
-              <td class="text-center">
-                <button class="btn btn-small" onclick="viewSupplierStatement('${supp.Name}')">Statement</button>
-                <button class="btn btn-small btn-danger" onclick="deleteSupplier(${idx})">Delete</button>
-              </td>
+            <td class="text-center">
+  <button class="btn btn-small" onclick="viewSupplierStatement('${supp.Name}')">Statement</button>
+  <button class="btn btn-small btn-success" onclick="createBill('${supp.Name}')">Bill</button>
+  <button class="btn btn-small btn-primary" onclick="makePayment('${supp.Name}')">Payment</button>
+  <button class="btn btn-small btn-danger" onclick="deleteSupplier(${idx})">Delete</button>
+</td>
+
+
             </tr>
           `).join('')}
         </tbody>
@@ -1895,9 +2025,112 @@ function getSupplierBalance(supplierName) {
   return balance;
 }
 
-function viewSupplierStatement(supplierName) {
-  alert(`Supplier Statement for ${supplierName}\n\nBalance: ${formatCurrency(getSupplierBalance(supplierName))}\n\n(Full aging report coming soon)`);
+function createBill(supplierName) {
+  const date = prompt("Bill Date (YYYY-MM-DD)", new Date().toISOString().split('T')[0]);
+  const amount = parseFloat(prompt("Bill Amount", "0"));
+  if (!date || !supplierName || !amount) return toast('Bill not created', 'error');
+
+  const apAccount = DATA.accounts.find(a => a.Name.includes('Payable'));
+  const expenseAccount = DATA.accounts.find(a => a.Type === 'Expense');
+
+  const entryID = uid();
+  const voucherNo = `BILL-${date.replace(/-/g,'')}-${entryID.slice(0,6)}`;
+
+  DATA.journalEntries.push({
+    EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 1,
+    Account: expenseAccount.Name, Debit: amount, Credit: 0,
+    Customer: '', Supplier: supplierName, ItemCode: '',
+    Description: `Bill from ${supplierName}`, Module: 'Bill'
+  });
+
+  DATA.journalEntries.push({
+    EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 2,
+    Account: apAccount.Name, Debit: 0, Credit: amount,
+    Customer: '', Supplier: supplierName, ItemCode: '',
+    Description: `Bill from ${supplierName}`, Module: 'Bill'
+  });
+
+  toast('Bill created');
+  renderView('suppliers');
 }
+
+function makePayment(supplierName) {
+  const date = prompt("Payment Date (YYYY-MM-DD)", new Date().toISOString().split('T')[0]);
+  const amount = parseFloat(prompt("Payment Amount", "0"));
+  if (!date || !supplierName || !amount) return toast('Payment not posted', 'error');
+
+  const cashAccount = DATA.accounts.find(a => a.Name === 'Cash' || a.Name === 'Bank');
+  const apAccount = DATA.accounts.find(a => a.Name.includes('Payable'));
+
+  const entryID = uid();
+  const voucherNo = `PAY-${date.replace(/-/g,'')}-${entryID.slice(0,6)}`;
+
+  DATA.journalEntries.push({
+    EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 1,
+    Account: apAccount.Name, Debit: amount, Credit: 0,
+    Customer: '', Supplier: supplierName, ItemCode: '',
+    Description: `Payment to ${supplierName}`, Module: 'Payment'
+  });
+
+  DATA.journalEntries.push({
+    EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 2,
+    Account: cashAccount.Name, Debit: 0, Credit: amount,
+    Customer: '', Supplier: supplierName, ItemCode: '',
+    Description: `Payment to ${supplierName}`, Module: 'Payment'
+  });
+
+  toast('Payment made');
+  renderView('suppliers');
+}
+
+
+
+function viewSupplierStatement(supplierName) {
+  const entries = DATA.journalEntries
+    .filter(e => e.Supplier === supplierName)
+    .sort((a, b) => new Date(a.Date) - new Date(b.Date));
+
+  let html = `<h3>Supplier Statement: ${supplierName}</h3>`;
+  html += `<table>
+    <thead>
+      <tr>
+        <th>Date</th><th>Voucher</th><th>Description</th>
+        <th class="text-right">Debit</th><th class="text-right">Credit</th>
+        <th class="text-right">Balance</th><th>Action</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+  let balance = 0;
+
+  entries.forEach(entry => {
+    const debit = parseFloat(entry.Debit) || 0;
+    const credit = parseFloat(entry.Credit) || 0;
+
+    if (['Liability', 'Equity'].includes(getAccountType(entry.Account))) {
+      balance += credit - debit;
+    } else {
+      balance += debit - credit;
+    }
+
+    html += `<tr>
+      <td>${entry.Date}</td>
+      <td>${entry.VoucherNo}</td>
+      <td>${entry.Description}</td>
+      <td class="text-right">${formatCurrency(debit)}</td>
+      <td class="text-right">${formatCurrency(credit)}</td>
+      <td class="text-right">${formatCurrency(balance)}</td>
+      <td><button class="btn btn-small" onclick="showJournalEntry('${entry.EntryID}')">View</button></td>
+    </tr>`;
+  });
+
+  html += `</tbody></table>`;
+  html += `<button class="btn mt-2" onclick="renderView('suppliers')">Back</button>`;
+
+  const container = document.getElementById('modalContainer') || document.body;
+  container.innerHTML = `<div class="modal show">${html}<span class="close-modal" onclick="closeModal()">×</span></div>`;
+}
+
 
 /* ============================================================
    INVENTORY VIEW
@@ -1999,12 +2232,29 @@ function renderReports(container) {
         <button class="btn" onclick="generateReport('ledger')">General Ledger</button>
       </div>
 
+<div class="form-group">
+  <label>From:</label>
+  <input type="date" id="reportFromDate">
+  <label>To:</label>
+  <input type="date" id="reportToDate">
+</div>
+
       <div id="reportOutput" class="mt-2"></div>
     </div>
   `;
 }
 
 function generateReport(type) {
+
+const fromDate = document.getElementById('reportFromDate').value;
+const toDate = document.getElementById('reportToDate').value;
+
+const entries = DATA.journalEntries.filter(e =>
+  (!fromDate || new Date(e.Date) >= new Date(fromDate)) &&
+  (!toDate || new Date(e.Date) <= new Date(toDate))
+);
+
+   
   const output = document.getElementById('reportOutput');
   
   if (type === 'trial') {
@@ -2155,26 +2405,46 @@ function generateReport(type) {
 
 function showLedger(accountName) {
   if (!accountName) return;
-  
+
   const account = DATA.accounts.find(a => a.Name === accountName);
-  const entries = DATA.journalEntries.filter(e => e.Account === accountName).sort((a, b) => new Date(a.Date) - new Date(b.Date));
-  
+
+  // Prompt for date filter
+  const fromDate = prompt("Enter start date (YYYY-MM-DD) or leave blank:", "");
+  const toDate = prompt("Enter end date (YYYY-MM-DD) or leave blank:", "");
+
+  let entries = DATA.journalEntries
+    .filter(e => e.Account === accountName)
+    .sort((a, b) => new Date(a.Date) - new Date(b.Date));
+
+  // Apply date filter
+  if (fromDate) entries = entries.filter(e => new Date(e.Date) >= new Date(fromDate));
+  if (toDate) entries = entries.filter(e => new Date(e.Date) <= new Date(toDate));
+
   let html = `<h4>Ledger: ${accountName}</h4>`;
   html += `<p>Opening Balance: ${formatCurrency(account.OpeningBalance || 0)}</p>`;
-  html += '<table><thead><tr><th>Date</th><th>Voucher</th><th>Description</th><th class="text-right">Debit</th><th class="text-right">Credit</th><th class="text-right">Balance</th></tr></thead><tbody>';
-  
+  html += `<table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Voucher</th>
+        <th>Description</th>
+        <th class="text-right">Debit</th>
+        <th class="text-right">Credit</th>
+        <th class="text-right">Balance</th>
+        <th class="text-center">Actions</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
   let balance = account.OpeningBalance || 0;
-  
+
   entries.forEach(entry => {
     const debit = parseFloat(entry.Debit) || 0;
     const credit = parseFloat(entry.Credit) || 0;
-    
-    if (['Asset', 'Expense'].includes(account.Type)) {
-      balance += debit - credit;
-    } else {
-      balance += credit - debit;
-    }
-    
+
+    if (['Asset', 'Expense'].includes(account.Type)) balance += debit - credit;
+    else balance += credit - debit;
+
     html += `<tr>
       <td>${entry.Date}</td>
       <td>${entry.VoucherNo}</td>
@@ -2182,15 +2452,76 @@ function showLedger(accountName) {
       <td class="text-right">${formatCurrency(debit)}</td>
       <td class="text-right">${formatCurrency(credit)}</td>
       <td class="text-right">${formatCurrency(balance)}</td>
+      <td class="text-center">
+        <button class="btn btn-small btn-info" onclick="viewJournalEntry('${entry.EntryID}')">View</button>
+        <button class="btn btn-small btn-warning" onclick="editJournalEntry('${entry.EntryID}')">Edit</button>
+        <button class="btn btn-small btn-danger" onclick="voidJournalEntry('${entry.EntryID}')">Void</button>
+      </td>
     </tr>`;
   });
-  
+
   html += '</tbody></table>';
   html += `<button class="btn mt-2" onclick="window.print()">Print Ledger</button>`;
-  
+
   document.getElementById('ledgerDetails').innerHTML = html;
 }
 
+
+// Edit journal entry amounts or description
+function editJournalEntry(entryID) {
+  const entryLines = DATA.journalEntries.filter(e => e.EntryID === entryID);
+  entryLines.forEach(e => {
+    const newDebit = prompt(`Edit Debit for ${e.Account}`, e.Debit);
+    const newCredit = prompt(`Edit Credit for ${e.Account}`, e.Credit);
+    const newDesc = prompt(`Edit Description for ${e.Account}`, e.Description);
+
+    if (newDebit !== null) e.Debit = parseFloat(newDebit) || 0;
+    if (newCredit !== null) e.Credit = parseFloat(newCredit) || 0;
+    if (newDesc !== null) e.Description = newDesc;
+  });
+  toast('Journal entry updated');
+  renderView('reports'); // Or re-render ledger
+}
+
+
+function showJournalEntry(entryID) {
+  const entry = DATA.journalEntries.find(e => e.EntryID === entryID);
+  if (!entry) return toast('Entry not found', 'error');
+
+  let html = `<h3>Journal Entry: ${entry.VoucherNo}</h3>`;
+  html += `<table>
+    <thead>
+      <tr><th>Account</th><th>Debit</th><th>Credit</th><th>Description</th></tr>
+    </thead>
+    <tbody>`;
+
+  DATA.journalEntries
+    .filter(e => e.EntryID === entryID)
+    .forEach(line => {
+      html += `<tr>
+        <td>${line.Account}</td>
+        <td class="text-right">${formatCurrency(line.Debit)}</td>
+        <td class="text-right">${formatCurrency(line.Credit)}</td>
+        <td>${line.Description}</td>
+      </tr>`;
+    });
+
+  html += `</tbody></table>`;
+  html += `<button class="btn mt-2" onclick="closeModal()">Close</button>`;
+
+  const container = document.getElementById('modalContainer') || document.body;
+  container.innerHTML = `<div class="modal show">${html}<span class="close-modal" onclick="closeModal()">×</span></div>`;
+}
+
+function closeModal() {
+  const modal = document.querySelector('.modal');
+  if (modal) modal.remove();
+}
+
+
+
+
+   
 /* ============================================================
    SETTINGS VIEW
    ============================================================ */
