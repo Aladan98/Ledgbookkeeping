@@ -338,20 +338,20 @@ tbody tr:hover { background: var(--hover-color); }
 <body>
 <div class="app">
   <aside class="sidebar">
-    <div class="brand">💚 LEDGIOX</div>
+    <div class="brand">LEDGIOX</div>
     <nav class="nav">
-      <button class="nav-item active" data-view="dashboard">📊 Dashboard</button>
-      <button class="nav-item" data-view="accounts">📖 Chart of Accounts</button>
-      <button class="nav-item" data-view="journal">📝 Journal Entry</button>
-      <button class="nav-item" data-view="bulk">📋 Bulk Journal</button>
-      <button class="nav-item" data-view="sales">💰 Sales & Invoices</button>
-      <button class="nav-item" data-view="purchases">🛒 Purchases & Bills</button>
-      <button class="nav-item" data-view="payments">💳 Payments</button>
-      <button class="nav-item" data-view="customers">👥 Customers</button>
-      <button class="nav-item" data-view="suppliers">🏭 Suppliers</button>
-      <button class="nav-item" data-view="inventory">📦 Inventory</button>
-      <button class="nav-item" data-view="reports">📈 Reports</button>
-      <button class="nav-item" data-view="settings">⚙️ Settings</button>
+      <button class="nav-item active" data-view="dashboard">Dashboard</button>
+      <button class="nav-item" data-view="accounts">Chart of Accounts</button>
+      <button class="nav-item" data-view="journal">Journal Entry</button>
+      <button class="nav-item" data-view="bulk">Bulk Journal</button>
+      <button class="nav-item" data-view="sales">Sales & Invoices</button>
+      <button class="nav-item" data-view="purchases">Purchases & Bills</button>
+      <button class="nav-item" data-view="payments">Payments</button>
+      <button class="nav-item" data-view="customers">Customers</button>
+      <button class="nav-item" data-view="suppliers">Suppliers</button>
+      <button class="nav-item" data-view="inventory">Inventory</button>
+      <button class="nav-item" data-view="reports">Reports</button>
+      <button class="nav-item" data-view="settings">Settings</button>
     </nav>
   </aside>
 
@@ -442,22 +442,36 @@ let DATA = {
   },
   accounts: [],
   journalEntries: [],
-  customers: [],
-  suppliers: [],
+  customers: [],       // ✅ Added for customer tracking
+  suppliers: [],       // ✅ Added for supplier tracking
   inventory: [],
-  invoices: [],
-  bills: [],
-  payments: []
+  invoices: [],        // ✅ For future invoice records
+  bills: [],           // ✅ For supplier bills
+  payments: []         // ✅ For payments made or received
 };
 
 let currentView = 'dashboard';
 let selectedTemplate = 'trading';
-let journalLines = [];
-let bulkJournalLines = [];
+let journalLines = [];      // ✅ Temporary storage for current journal entry lines
+let bulkJournalLines = [];  // ✅ For importing/exporting multiple entries
+
+// === Journal Helpers ===
+function uid() {
+  // Generates a short, unique ID for each entry or object
+  return 'id-' + Math.random().toString(36).substr(2, 9);
+}
 
 const CURRENCY_SYMBOLS = {
-  INR: '₹', USD: '$', EUR: '€', GBP: '£', AED: 'د.إ', JPY: '¥', AUD: 'A$', CAD: 'C$'
+  INR: '₹',
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+  AED: 'د.إ',
+  JPY: '¥',
+  AUD: 'A$',
+  CAD: 'C$'
 };
+
 
 /* ============================================================
    CHART OF ACCOUNTS TEMPLATES (ALL CAPITALIZED)
@@ -876,14 +890,14 @@ function renderDashboard(container) {
 
     <div class="card">
       <div class="card-title">Quick Stats</div>
-      <p>📊 Total Journal Entries: <strong>${DATA.journalEntries.length}</strong></p>
-      <p>👥 Customers: <strong>${DATA.customers.length}</strong></p>
-      <p>🏭 Suppliers: <strong>${DATA.suppliers.length}</strong></p>
-      <p>📦 Inventory Items: <strong>${DATA.inventory.length}</strong></p>
+      <p>Total Journal Entries: <strong>${DATA.journalEntries.length}</strong></p>
+      <p>Customers: <strong>${DATA.customers.length}</strong></p>
+      <p>Suppliers: <strong>${DATA.suppliers.length}</strong></p>
+      <p>Inventory Items: <strong>${DATA.inventory.length}</strong></p>
       <p style="margin-top: 10px;">
         ${!DATA.settings.openingBalancesPosted ? 
           '<button class="btn btn-primary" onclick="postOpeningBalances()">Post Opening Balances</button>' : 
-          '✅ Opening balances posted'}
+          'Opening balances posted'}
       </p>
     </div>
   `;
@@ -1049,7 +1063,10 @@ function renderJournal(container) {
       </div>
     </div>
   `;
-  
+
+   document.getElementById('jeVoucherNo').value = `JE-${Date.now()}`;
+
+   
   renderJournalLines();
 }
 
@@ -1116,9 +1133,11 @@ function updateJournalLine(idx, field, value) {
 }
 
 function removeJournalLine(idx) {
+  if (!confirm('Delete this line?')) return;
   journalLines.splice(idx, 1);
   renderJournalLines();
 }
+
 
 function updateJournalTotals() {
   const totalDebit = journalLines.reduce((sum, line) => sum + (parseFloat(line.debit) || 0), 0);
@@ -1189,8 +1208,9 @@ function postJournal() {
 
 function clearJournal() {
   journalLines = [];
-  document.getElementById('jeVoucherNo').value = '';
+  document.getElementById('jeVoucherNo').value = `JE-${Date.now()}`;
   document.getElementById('jeDescription').value = '';
+  document.getElementById('jeDate').value = new Date().toISOString().split('T')[0];
   renderJournalLines();
 }
 
@@ -2343,15 +2363,15 @@ const entries = DATA.journalEntries.filter(e =>
       const balance = getAccountBalance(acc.Name);
       if (acc.Type === 'Asset') {
         totalAssets += balance;
-        assetsHtml += `<tr><td>${acc.Name}</td><td class="text-right">${formatCurrency(balance)}</td></tr>`;
+        assetsHtml += `<tr><td><a href="#" onclick="showLedger('${acc.Name}')">${acc.Name}</a></td><td class="text-right">${formatCurrency(balance)}</td></tr>`;
       }
       if (acc.Type === 'Liability') {
         totalLiabilities += balance;
-        liabilitiesHtml += `<tr><td>${acc.Name}</td><td class="text-right">${formatCurrency(balance)}</td></tr>`;
+        liabilitiesHtml += `<tr><td><a href="#" onclick="showLedger('${acc.Name}')">${acc.Name}</a></td><td class="text-right">${formatCurrency(balance)}</td></tr>`;
       }
       if (acc.Type === 'Equity') {
         totalEquity += balance;
-        equityHtml += `<tr><td>${acc.Name}</td><td class="text-right">${formatCurrency(balance)}</td></tr>`;
+        equityHtml += `<tr><td><a href="#" onclick="showLedger('${acc.Name}')">${acc.Name}</a></td><td class="text-right">${formatCurrency(balance)}</td></tr>`;
       }
     });
     
@@ -2402,6 +2422,28 @@ const entries = DATA.journalEntries.filter(e =>
     output.innerHTML = html;
   }
 }
+
+   function addManualEntry(accountName) {
+  const date = prompt("Date (YYYY-MM-DD):", new Date().toISOString().split('T')[0]);
+  const desc = prompt("Description:");
+  const debit = parseFloat(prompt("Debit amount:", "0")) || 0;
+  const credit = parseFloat(prompt("Credit amount:", "0")) || 0;
+  const entryID = crypto.randomUUID ? crypto.randomUUID() : 'E' + Date.now();
+
+  DATA.journalEntries.push({
+    EntryID: entryID,
+    Date: date,
+    Account: accountName,
+    Debit: debit,
+    Credit: credit,
+    Description: desc,
+    VoucherNo: 'MANUAL'
+  });
+
+  toast('Manual entry added');
+  showLedger(accountName);
+}
+
 
 function showLedger(accountName) {
   if (!accountName) return;
@@ -2461,12 +2503,18 @@ function showLedger(accountName) {
   });
 
   html += '</tbody></table>';
+   const totalDebit = entries.reduce((a, e) => a + (parseFloat(e.Debit) || 0), 0);
+const totalCredit = entries.reduce((a, e) => a + (parseFloat(e.Credit) || 0), 0);
+html += `<p><strong>Total Debit:</strong> ${formatCurrency(totalDebit)} | <strong>Total Credit:</strong> ${formatCurrency(totalCredit)}</p>`;
+
   html += `<button class="btn mt-2" onclick="window.print()">Print Ledger</button>`;
+html += `<button class="btn btn-success mt-2" onclick="addManualEntry('${accountName}')">Add Manual Entry</button>`;
 
   document.getElementById('ledgerDetails').innerHTML = html;
 }
 
 
+   
 // Edit journal entry amounts or description
 function editJournalEntry(entryID) {
   const entryLines = DATA.journalEntries.filter(e => e.EntryID === entryID);
@@ -2480,11 +2528,28 @@ function editJournalEntry(entryID) {
     if (newDesc !== null) e.Description = newDesc;
   });
   toast('Journal entry updated');
-  renderView('reports'); // Or re-render ledger
+showLedger(DATA.journalEntries.find(e => e.EntryID === entryID)?.Account);
+
+}
+
+   
+function voidJournalEntry(entryID) {
+  if (!confirm("Are you sure you want to void this journal entry?")) return;
+
+  DATA.journalEntries = DATA.journalEntries.map(e => {
+    if (e.EntryID === entryID) {
+      return { ...e, Debit: 0, Credit: 0, Description: `(VOID) ${e.Description}` };
+    }
+    return e;
+  });
+
+  toast('Journal entry voided');
+  renderView('ledger');
 }
 
 
-function showJournalEntry(entryID) {
+   
+  function viewJournalEntry(entryID) {
   const entry = DATA.journalEntries.find(e => e.EntryID === entryID);
   if (!entry) return toast('Entry not found', 'error');
 
