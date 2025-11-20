@@ -956,27 +956,29 @@ function renderAccounts(container) {
 }
 
 function addAccount() {
-   OpeningBalance: acc.OpeningBalance || 0
-if (DATA.accounts.find(a => a.Name === name)) {
-  toast('Account already exists', 'error');
-  return;
-}
-
   const name = document.getElementById('accName').value.trim();
   const type = document.getElementById('accType').value;
 
-  if (!name) return toast('Account name required', 'error');
-  if (DATA.accounts.some(a => a.Name === name)) return toast('Account already exists', 'error');
-   if (!type) {
-  toast('Please select account type', 'error');
-  return;
-}
+  if (!name) {
+    toast('Account name required', 'error');
+    return;
+  }
 
+  if (!type) {
+    toast('Please select account type', 'error');
+    return;
+  }
+
+  if (DATA.accounts.find(a => a.Name === name)) {
+    toast('Account already exists', 'error');
+    return;
+  }
 
   DATA.accounts.push({ Name: name, Type: type, OpeningBalance: 0 });
   renderView('accounts');
   toast('Account added');
 }
+
 
 
 function deleteAccount(idx) {
