@@ -956,40 +956,36 @@ function renderAccounts(container) {
 }
 
 function addAccount() {
-  const name = document.getElementById('accName').value.trim();
-  const type = document.getElementById('accType').value;
-  const openingBalance = parseFloat(document.getElementById('accOpeningBalance').value) || 0;
-
-  if (!name) {
-    toast('Please enter account name', 'error');
-    return;
-  }
-
-  DATA.accounts.push({
-    Name: name,
-    Type: type,
-    OpeningBalance: openingBalance,
-    Notes: ''
-  });
-
-  toast('Account added successfully');
-  renderView('accounts');
+   OpeningBalance: acc.OpeningBalance || 0
+if (DATA.accounts.find(a => a.Name === name)) {
+  toast('Account already exists', 'error');
+  return;
 }
 
-function deleteAccount(idx) {
-  const account = DATA.accounts[idx];
-  const used = DATA.journalEntries.some(e => e.Account === account.Name);
-  
-  if (used) {
-    toast('Cannot delete account with transaction history', 'error');
-    return;
-  }
+  const name = document.getElementById('accName').value.trim();
+  const type = document.getElementById('accType').value;
 
-  if (confirm(`Delete account "${account.Name}"?`)) {
-    DATA.accounts.splice(idx, 1);
-    toast('Account deleted');
-    renderView('accounts');
+  if (!name) return toast('Account name required', 'error');
+  if (DATA.accounts.some(a => a.Name === name)) return toast('Account already exists', 'error');
+   if (!type) {
+  toast('Please select account type', 'error');
+  return;
+}
+
+
+  DATA.accounts.push({ Name: name, Type: type, OpeningBalance: 0 });
+  renderView('accounts');
+  toast('Account added');
+}
+
+
+function deleteAccount(idx) {
+  const accountName = DATA.accounts[idx].Name;
+  if (DATA.journalEntries.some(e => e.Account === accountName)) {
+    return toast('Cannot delete account with journal entries', 'error');
   }
+  DATA.accounts.splice(idx,1);
+  renderView('accounts');
 }
 
 function getAccountBalance(accountName) {
@@ -2183,7 +2179,11 @@ function renderInventory(container) {
         </thead>
         <tbody>
           ${DATA.inventory.map((item, idx) => {
-            const value = (item.CurrentQty || 0) * (item.LastCost || 0);
+            const value = parseFloat(((item.CurrentQty || 0) * (item.LastCost || 0)).toFixed(2));
+
+             if(qty < 0 || cost < 0) { toast('Invalid qty/cost', 'error'); return; }
+
+
             return `
               <tr>
                 <td>${item.ItemCode}</td>
@@ -2208,13 +2208,11 @@ function addInventoryItem() {
   const code = document.getElementById('itemCode').value.trim();
   const name = document.getElementById('itemName').value.trim();
   const category = document.getElementById('itemCategory').value.trim();
-  const qty = parseFloat(document.getElementById('itemQty').value) || 0;
-  const cost = parseFloat(document.getElementById('itemCost').value) || 0;
+  let qty = parseFloat(document.getElementById('itemQty').value) || 0;
+  let cost = parseFloat(document.getElementById('itemCost').value) || 0;
 
-  if (!code || !name) {
-    toast('Please enter code and name', 'error');
-    return;
-  }
+  if (!code || !name) return toast('Please enter code and name', 'error');
+  if (qty < 0 || cost < 0) return toast('Quantity and Cost cannot be negative', 'error');
 
   DATA.inventory.push({
     ItemCode: code,
@@ -2228,6 +2226,7 @@ function addInventoryItem() {
   toast('Inventory item added');
   renderView('inventory');
 }
+
 
 function deleteInventoryItem(idx) {
   if (confirm('Delete this item?')) {
@@ -2269,10 +2268,13 @@ function generateReport(type) {
 const fromDate = document.getElementById('reportFromDate').value;
 const toDate = document.getElementById('reportToDate').value;
 
-const entries = DATA.journalEntries.filter(e =>
-  (!fromDate || new Date(e.Date) >= new Date(fromDate)) &&
-  (!toDate || new Date(e.Date) <= new Date(toDate))
-);
+const entries = DATA.journalEntries.filter(e => {
+  const entryDate = new Date(e.Date);
+  if (isNaN(entryDate)) return false;
+  return (!fromDate || entryDate >= new Date(fromDate)) &&
+         (!toDate || entryDate <= new Date(toDate));
+});
+
 
    
   const output = document.getElementById('reportOutput');
@@ -2423,30 +2425,61 @@ const entries = DATA.journalEntries.filter(e =>
   }
 }
 
-   function addManualEntry(accountName) {
+
+function getAccountBalance(accountName) {
+  const acc = DATA.accounts.find(a => a.Name === accountName);
+  if (!acc) return 0;
+  const entries = DATA.journalEntries.filter(e => e.Account === accountName);
+  let balance = acc.OpeningBalance || 0;
+
+  entries.forEach(e => {
+    const debit = parseFloat(e.Debit) || 0;
+    const credit = parseFloat(e.Credit) || 0;
+    if (['Asset','Expense'].includes(acc.Type)) balance += debit - credit;
+    else balance += credit - debit;
+  });
+  return balance;
+}
+
+
+   
+function addManualEntry(accountName) {
+   if (!DATA.accounts.find(a => a.Name === account)) {
+  toast('Account does not exist', 'error');
+  return;
+}
+   
+
   const date = prompt("Date (YYYY-MM-DD):", new Date().toISOString().split('T')[0]);
-  const desc = prompt("Description:");
+  if (!date || isNaN(new Date(date))) return toast('Invalid date', 'error');
+
+  const desc = prompt("Description:") || '';
   const debit = parseFloat(prompt("Debit amount:", "0")) || 0;
   const credit = parseFloat(prompt("Credit amount:", "0")) || 0;
-  const entryID = crypto.randomUUID ? crypto.randomUUID() : 'E' + Date.now();
 
-  DATA.journalEntries.push({
-    EntryID: entryID,
-    Date: date,
-    Account: accountName,
-    Debit: debit,
-    Credit: credit,
-    Description: desc,
-    VoucherNo: 'MANUAL'
-  });
+  if (debit < 0 || credit < 0) return toast('Amounts cannot be negative', 'error');
 
+Debit: parseFloat(debit) || 0,
+Credit: parseFloat(credit) || 0
+
+   
+
+  const entryID = crypto.randomUUID ? crypto.randomUUID() : 'E'+Date.now();
+
+  DATA.journalEntries.push({ EntryID: entryID, Date: date, Account: accountName, Debit: debit, Credit: credit, Description: desc, VoucherNo: 'MANUAL' });
   toast('Manual entry added');
   showLedger(accountName);
 }
 
 
+
 function showLedger(accountName) {
   if (!accountName) return;
+   if (!account) return toast('Account not found', 'error');
+   if (['Asset', 'Expense'].includes(account.Type)) balance += debit - credit;
+else balance += credit - debit;
+
+
 
   const account = DATA.accounts.find(a => a.Name === accountName);
 
@@ -2479,13 +2512,14 @@ function showLedger(accountName) {
     <tbody>`;
 
   let balance = account.OpeningBalance || 0;
-
-  entries.forEach(entry => {
-    const debit = parseFloat(entry.Debit) || 0;
-    const credit = parseFloat(entry.Credit) || 0;
-
-    if (['Asset', 'Expense'].includes(account.Type)) balance += debit - credit;
+entries
+  .filter(e => fromDate ? new Date(e.Date) >= new Date(fromDate) : true)
+  .forEach(e => {
+    const debit = parseFloat(e.Debit) || 0;
+    const credit = parseFloat(e.Credit) || 0;
+    if (['Asset','Expense'].includes(account.Type)) balance += debit - credit;
     else balance += credit - debit;
+  });
 
     html += `<tr>
       <td>${entry.Date}</td>
@@ -2497,7 +2531,7 @@ function showLedger(accountName) {
       <td class="text-center">
         <button class="btn btn-small btn-info" onclick="viewJournalEntry('${entry.EntryID}')">View</button>
         <button class="btn btn-small btn-warning" onclick="editJournalEntry('${entry.EntryID}')">Edit</button>
-        <button class="btn btn-small btn-danger" onclick="voidJournalEntry('${entry.EntryID}')">Void</button>
+        <button class="btn btn-small btn-danger" onclick="voidJournalEntry('${entry.EntryID}', '${accountName}')">Void</button>
       </td>
     </tr>`;
   });
@@ -2529,23 +2563,24 @@ function editJournalEntry(entryID) {
   });
   toast('Journal entry updated');
 showLedger(DATA.journalEntries.find(e => e.EntryID === entryID)?.Account);
+const accountName = entryLines[0]?.Account;
 
 }
 
    
-function voidJournalEntry(entryID) {
+function voidJournalEntry(entryID, accountName) {
   if (!confirm("Are you sure you want to void this journal entry?")) return;
 
-  DATA.journalEntries = DATA.journalEntries.map(e => {
-    if (e.EntryID === entryID) {
-      return { ...e, Debit: 0, Credit: 0, Description: `(VOID) ${e.Description}` };
-    }
-    return e;
-  });
+  DATA.journalEntries = DATA.journalEntries.map(e =>
+    e.EntryID === entryID
+      ? { ...e, Debit: 0, Credit: 0, Description: `(VOID) ${e.Description}` }
+      : e
+  );
 
   toast('Journal entry voided');
-  renderView('ledger');
+  showLedger(accountName); // refresh ledger of the same account
 }
+
 
 
    
@@ -2640,12 +2675,13 @@ function renderSettings(container) {
       <p><strong>Total Journal Entries:</strong> ${DATA.journalEntries.length}</p>
       <p><strong>Opening Balances Posted:</strong> ${DATA.settings.openingBalancesPosted ? 'Yes ✅' : 'No ❌'}</p>
       <p><strong>Max Rows per Sheet:</strong> ${MAX_JE_ROWS.toLocaleString()}</p>
-      ${DATA.journalEntries.length > MAX_JE_ROWS ? 
-        `<p style="color: var(--warning-color);"><strong>Note:</strong> Journal entries will be split into ${Math.ceil(DATA.journalEntries.length / MAX_JE_ROWS)} sheets when saved.</p>` : 
-        ''}
+      ${DATA.journalEntries.length > MAX_JE_ROWS 
+        ? `<p style="color: var(--warning-color);"><strong>Note:</strong> You have ${DATA.journalEntries.length.toLocaleString()} journal entries. They will be split into ${Math.ceil(DATA.journalEntries.length / MAX_JE_ROWS)} sheets when saving.</p>` 
+        : ''}
     </div>
   `;
 }
+
 
 function saveSettings() {
   DATA.settings.companyName = document.getElementById('settingCompanyName').value;
@@ -2653,6 +2689,9 @@ function saveSettings() {
   DATA.settings.fiscalYearStart = document.getElementById('settingFiscalYear').value;
   DATA.settings.inventoryMethod = document.getElementById('settingInventoryMethod').value;
   DATA.settings.backupEnabled = document.getElementById('settingBackup').checked;
+
+  if(!DATA.settings.companyName) { toast('Company name required','error'); return; }
+
   
   updateUI();
   toast('Settings saved successfully');
@@ -2678,9 +2717,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('fiscalYearStart').value = new Date().toISOString().split('T')[0];
   });
 
-  document.querySelector('.close-modal').addEventListener('click', () => {
-    document.getElementById('newCompanyModal').style.display = 'none';
-  });
+ document.querySelectorAll('.close-modal').forEach(btn => {
+  btn.addEventListener('click', () => btn.closest('.modal').style.display='none');
+});
+
 
   // Template Selection
   document.querySelectorAll('.template-card').forEach(card => {
@@ -2720,13 +2760,19 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('fileInput').click();
   });
 
-  document.getElementById('fileInput').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) loadWorkbook(file);
-  });
+ document.getElementById('fileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) loadWorkbook(file);
+  e.target.value = ''; // reset
+});
 
   document.getElementById('btnExport').addEventListener('click', saveWorkbook);
   document.getElementById('btnSave').addEventListener('click', saveWorkbook);
+
+   if (DATA.journalEntries.length > MAX_JE_ROWS) {
+  toast(`Journal entries exceed ${MAX_JE_ROWS}, will be split into ${Math.ceil(DATA.journalEntries.length/MAX_JE_ROWS)} sheets`, 'info');
+}
+
 
   // Initial render
   renderView('dashboard');
