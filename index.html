@@ -2181,11 +2181,7 @@ function renderInventory(container) {
         </thead>
         <tbody>
           ${DATA.inventory.map((item, idx) => {
-            const value = parseFloat(((item.CurrentQty || 0) * (item.LastCost || 0)).toFixed(2));
-
-             if(qty < 0 || cost < 0) { toast('Invalid qty/cost', 'error'); return; }
-
-
+            const value = (item.CurrentQty || 0) * (item.LastCost || 0);
             return `
               <tr>
                 <td>${item.ItemCode}</td>
@@ -2205,6 +2201,7 @@ function renderInventory(container) {
     </div>
   `;
 }
+
 
 function addInventoryItem() {
   const code = document.getElementById('itemCode').value.trim();
@@ -2446,11 +2443,10 @@ function getAccountBalance(accountName) {
 
    
 function addManualEntry(accountName) {
-   if (!DATA.accounts.find(a => a.Name === account)) {
-  toast('Account does not exist', 'error');
-  return;
-}
-   
+  if (!DATA.accounts.find(a => a.Name === accountName)) {
+    toast('Account does not exist', 'error');
+    return;
+  }
 
   const date = prompt("Date (YYYY-MM-DD):", new Date().toISOString().split('T')[0]);
   if (!date || isNaN(new Date(date))) return toast('Invalid date', 'error');
@@ -2460,30 +2456,32 @@ function addManualEntry(accountName) {
   const credit = parseFloat(prompt("Credit amount:", "0")) || 0;
 
   if (debit < 0 || credit < 0) return toast('Amounts cannot be negative', 'error');
+  if (debit === 0 && credit === 0) return toast('Debit or Credit must be non-zero', 'error');
 
-Debit: parseFloat(debit) || 0,
-Credit: parseFloat(credit) || 0
+  const entryID = crypto.randomUUID ? crypto.randomUUID() : 'E' + Date.now();
 
-   
+  DATA.journalEntries.push({
+    EntryID: entryID,
+    Date: date,
+    Account: accountName,
+    Debit: debit,
+    Credit: credit,
+    Description: desc,
+    VoucherNo: 'MANUAL'
+  });
 
-  const entryID = crypto.randomUUID ? crypto.randomUUID() : 'E'+Date.now();
-
-  DATA.journalEntries.push({ EntryID: entryID, Date: date, Account: accountName, Debit: debit, Credit: credit, Description: desc, VoucherNo: 'MANUAL' });
   toast('Manual entry added');
   showLedger(accountName);
 }
 
 
 
+
 function showLedger(accountName) {
   if (!accountName) return;
-   if (!account) return toast('Account not found', 'error');
-   if (['Asset', 'Expense'].includes(account.Type)) balance += debit - credit;
-else balance += credit - debit;
-
-
 
   const account = DATA.accounts.find(a => a.Name === accountName);
+  if (!account) return toast('Account not found', 'error');
 
   // Prompt for date filter
   const fromDate = prompt("Enter start date (YYYY-MM-DD) or leave blank:", "");
@@ -2514,14 +2512,13 @@ else balance += credit - debit;
     <tbody>`;
 
   let balance = account.OpeningBalance || 0;
-entries
-  .filter(e => fromDate ? new Date(e.Date) >= new Date(fromDate) : true)
-  .forEach(e => {
-    const debit = parseFloat(e.Debit) || 0;
-    const credit = parseFloat(e.Credit) || 0;
+
+  entries.forEach(entry => {
+    const debit = parseFloat(entry.Debit) || 0;
+    const credit = parseFloat(entry.Credit) || 0;
+
     if (['Asset','Expense'].includes(account.Type)) balance += debit - credit;
     else balance += credit - debit;
-  });
 
     html += `<tr>
       <td>${entry.Date}</td>
@@ -2539,16 +2536,16 @@ entries
   });
 
   html += '</tbody></table>';
-   const totalDebit = entries.reduce((a, e) => a + (parseFloat(e.Debit) || 0), 0);
-const totalCredit = entries.reduce((a, e) => a + (parseFloat(e.Credit) || 0), 0);
-html += `<p><strong>Total Debit:</strong> ${formatCurrency(totalDebit)} | <strong>Total Credit:</strong> ${formatCurrency(totalCredit)}</p>`;
 
+  const totalDebit = entries.reduce((a, e) => a + (parseFloat(e.Debit) || 0), 0);
+  const totalCredit = entries.reduce((a, e) => a + (parseFloat(e.Credit) || 0), 0);
+
+  html += `<p><strong>Total Debit:</strong> ${formatCurrency(totalDebit)} | <strong>Total Credit:</strong> ${formatCurrency(totalCredit)}</p>`;
   html += `<button class="btn mt-2" onclick="window.print()">Print Ledger</button>`;
-html += `<button class="btn btn-success mt-2" onclick="addManualEntry('${accountName}')">Add Manual Entry</button>`;
+  html += `<button class="btn btn-success mt-2" onclick="addManualEntry('${accountName}')">Add Manual Entry</button>`;
 
   document.getElementById('ledgerDetails').innerHTML = html;
 }
-
 
    
 // Edit journal entry amounts or description
