@@ -1182,6 +1182,7 @@ function postJournal() {
   }
 
   const entryID = uid();
+
   journalLines.forEach((line, idx) => {
     DATA.journalEntries.push({
       EntryID: entryID,
@@ -1195,7 +1196,11 @@ function postJournal() {
       Supplier: line.supplier || '',
       ItemCode: '',
       Description: line.description || description,
-      Module: 'Journal'
+      Module: 'Journal',
+
+      // 🔥 REQUIRED FOR DRILL-BACK
+      SourceType: "Journal",
+      SourceID: entryID
     });
   });
 
@@ -1203,6 +1208,7 @@ function postJournal() {
   clearJournal();
   renderView('journal');
 }
+
 
 function clearJournal() {
   journalLines = [];
@@ -1340,20 +1346,23 @@ function postBulkJournal() {
     const voucherNo = `BULK-${date}-${entryID.slice(0, 6)}`;
 
     lines.forEach((line, idx) => {
-      DATA.journalEntries.push({
-        EntryID: entryID,
-        Date: date,
-        VoucherNo: voucherNo,
-        LineNumber: idx + 1,
-        Account: line.account,
-        Debit: line.debit || 0,
-        Credit: line.credit || 0,
-        Customer: line.customer || '',
-        Supplier: line.supplier || '',
-        ItemCode: '',
-        Description: line.description,
-        Module: 'BulkJournal'
-      });
+     DATA.journalEntries.push({
+  EntryID: entryID,
+  Date: date,
+  VoucherNo: voucherNo,
+  LineNumber: idx + 1,
+  Account: line.account,
+  Debit: line.debit || 0,
+  Credit: line.credit || 0,
+  Customer: line.customer || '',
+  Supplier: line.supplier || '',
+  ItemCode: '',
+  Description: line.description,
+  Module: 'BulkJournal',
+  SourceType: 'BulkJournal',
+  SourceID: entryID   // same as EntryID, so we can trace back
+});
+
     });
 
     posted++;
@@ -1479,6 +1488,7 @@ function postSale() {
   const entryID = uid();
   const voucherNo = `INV-${date.replace(/-/g, '')}-${entryID.slice(0, 6)}`;
 
+  // AR line
   DATA.journalEntries.push({
     EntryID: entryID,
     Date: date,
@@ -1491,9 +1501,12 @@ function postSale() {
     Supplier: '',
     ItemCode: '',
     Description: description,
-    Module: 'Sales'
+    Module: 'Sales',
+    SourceType: 'Sale',
+    SourceID: entryID
   });
 
+  // Sales line
   DATA.journalEntries.push({
     EntryID: entryID,
     Date: date,
@@ -1506,7 +1519,9 @@ function postSale() {
     Supplier: '',
     ItemCode: '',
     Description: description,
-    Module: 'Sales'
+    Module: 'Sales',
+    SourceType: 'Sale',
+    SourceID: entryID
   });
 
   toast('Invoice created successfully');
@@ -1588,6 +1603,7 @@ function postPurchase() {
   const entryID = uid();
   const voucherNo = `BILL-${date.replace(/-/g, '')}-${entryID.slice(0, 6)}`;
 
+  // Purchases debit line
   DATA.journalEntries.push({
     EntryID: entryID,
     Date: date,
@@ -1600,9 +1616,12 @@ function postPurchase() {
     Supplier: supplier,
     ItemCode: '',
     Description: description,
-    Module: 'Purchase'
+    Module: 'Purchase',
+    SourceType: 'Purchase',
+    SourceID: entryID
   });
 
+  // Accounts Payable credit line
   DATA.journalEntries.push({
     EntryID: entryID,
     Date: date,
@@ -1615,12 +1634,15 @@ function postPurchase() {
     Supplier: supplier,
     ItemCode: '',
     Description: description,
-    Module: 'Purchase'
+    Module: 'Purchase',
+    SourceType: 'Purchase',
+    SourceID: entryID
   });
 
   toast('Purchase bill created successfully');
   renderView('purchases');
 }
+
 
 /* ============================================================
    PAYMENTS VIEW
@@ -1701,23 +1723,47 @@ function postReceivePayment() {
   const entryID = uid();
   const voucherNo = `RCV-${date.replace(/-/g, '')}-${entryID.slice(0, 6)}`;
 
+  // Cash debit
   DATA.journalEntries.push({
-    EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 1,
-    Account: cashAccount.Name, Debit: amount, Credit: 0,
-    Customer: customer, Supplier: '', ItemCode: '',
-    Description: `Payment received from ${customer}`, Module: 'Payment'
+    EntryID: entryID,
+    Date: date,
+    VoucherNo: voucherNo,
+    LineNumber: 1,
+    Account: cashAccount.Name,
+    Debit: amount,
+    Credit: 0,
+    Customer: customer,
+    Supplier: '',
+    ItemCode: '',
+    Description: `Payment received from ${customer}`,
+    Module: 'Payment',
+    SourceType: 'Payment',
+    SourceID: entryID
   });
 
+  // Accounts Receivable credit
   DATA.journalEntries.push({
-    EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 2,
-    Account: arAccount.Name, Debit: 0, Credit: amount,
-    Customer: customer, Supplier: '', ItemCode: '',
-    Description: `Payment received from ${customer}`, Module: 'Payment'
+    EntryID: entryID,
+    Date: date,
+    VoucherNo: voucherNo,
+    LineNumber: 2,
+    Account: arAccount.Name,
+    Debit: 0,
+    Credit: amount,
+    Customer: customer,
+    Supplier: '',
+    ItemCode: '',
+    Description: `Payment received from ${customer}`,
+    Module: 'Payment',
+    SourceType: 'Payment',
+    SourceID: entryID
   });
 
   toast('Payment received');
   renderView('payments');
 }
+
+
 
 function postMakePayment() {
   const date = document.getElementById('payDate').value;
@@ -1735,23 +1781,46 @@ function postMakePayment() {
   const entryID = uid();
   const voucherNo = `PAY-${date.replace(/-/g, '')}-${entryID.slice(0, 6)}`;
 
+  // Accounts Payable debit
   DATA.journalEntries.push({
-    EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 1,
-    Account: apAccount.Name, Debit: amount, Credit: 0,
-    Customer: '', Supplier: supplier, ItemCode: '',
-    Description: `Payment to ${supplier}`, Module: 'Payment'
+    EntryID: entryID,
+    Date: date,
+    VoucherNo: voucherNo,
+    LineNumber: 1,
+    Account: apAccount.Name,
+    Debit: amount,
+    Credit: 0,
+    Customer: '',
+    Supplier: supplier,
+    ItemCode: '',
+    Description: `Payment to ${supplier}`,
+    Module: 'Payment',
+    SourceType: 'Payment',
+    SourceID: entryID
   });
 
+  // Cash/Bank credit
   DATA.journalEntries.push({
-    EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 2,
-    Account: cashAccount.Name, Debit: 0, Credit: amount,
-    Customer: '', Supplier: supplier, ItemCode: '',
-    Description: `Payment to ${supplier}`, Module: 'Payment'
+    EntryID: entryID,
+    Date: date,
+    VoucherNo: voucherNo,
+    LineNumber: 2,
+    Account: cashAccount.Name,
+    Debit: 0,
+    Credit: amount,
+    Customer: '',
+    Supplier: supplier,
+    ItemCode: '',
+    Description: `Payment to ${supplier}`,
+    Module: 'Payment',
+    SourceType: 'Payment',
+    SourceID: entryID
   });
 
   toast('Payment made');
   renderView('payments');
 }
+
 
 
 /* ============================================================
@@ -1872,7 +1941,6 @@ function createInvoice(customerName) {
   toast('Invoice created');
   renderView('customers');
 }
-
 function receivePayment(customerName) {
   const date = prompt("Payment Date (YYYY-MM-DD)", new Date().toISOString().split('T')[0]);
   const amount = parseFloat(prompt("Payment Amount", "0"));
@@ -1884,23 +1952,46 @@ function receivePayment(customerName) {
   const entryID = uid();
   const voucherNo = `RCV-${date.replace(/-/g,'')}-${entryID.slice(0,6)}`;
 
+  // Cash debit
   DATA.journalEntries.push({
-    EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 1,
-    Account: cashAccount.Name, Debit: amount, Credit: 0,
-    Customer: customerName, Supplier: '', ItemCode: '',
-    Description: `Payment received from ${customerName}`, Module: 'Payment'
+    EntryID: entryID,
+    Date: date,
+    VoucherNo: voucherNo,
+    LineNumber: 1,
+    Account: cashAccount.Name,
+    Debit: amount,
+    Credit: 0,
+    Customer: customerName,
+    Supplier: '',
+    ItemCode: '',
+    Description: `Payment received from ${customerName}`,
+    Module: 'Payment',
+    SourceType: 'Payment',
+    SourceID: entryID
   });
 
+  // Accounts Receivable credit
   DATA.journalEntries.push({
-    EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 2,
-    Account: arAccount.Name, Debit: 0, Credit: amount,
-    Customer: customerName, Supplier: '', ItemCode: '',
-    Description: `Payment received from ${customerName}`, Module: 'Payment'
+    EntryID: entryID,
+    Date: date,
+    VoucherNo: voucherNo,
+    LineNumber: 2,
+    Account: arAccount.Name,
+    Debit: 0,
+    Credit: amount,
+    Customer: customerName,
+    Supplier: '',
+    ItemCode: '',
+    Description: `Payment received from ${customerName}`,
+    Module: 'Payment',
+    SourceType: 'Payment',
+    SourceID: entryID
   });
 
   toast('Payment received');
   renderView('customers');
 }
+
 
 
 function viewCustomerStatement(customerName) {
@@ -2047,9 +2138,8 @@ function createBill(supplierName) {
   const amount = parseFloat(prompt("Bill Amount", "0"));
   if (!date || !supplierName || !amount) return toast('Bill not created', 'error');
 
- const apAccount = DATA.accounts.find(a => a.Type === 'Liability');
-const expenseAccount = DATA.accounts.find(a => a.Type === 'Expense');
-
+  const apAccount = DATA.accounts.find(a => a.Type === 'Liability');
+  const expenseAccount = DATA.accounts.find(a => a.Type === 'Expense');
 
   const entryID = uid();
   const voucherNo = `BILL-${date.replace(/-/g,'')}-${entryID.slice(0,6)}`;
@@ -2058,14 +2148,18 @@ const expenseAccount = DATA.accounts.find(a => a.Type === 'Expense');
     EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 1,
     Account: expenseAccount.Name, Debit: amount, Credit: 0,
     Customer: '', Supplier: supplierName, ItemCode: '',
-    Description: `Bill from ${supplierName}`, Module: 'Bill'
+    Description: `Bill from ${supplierName}`, Module: 'Bill',
+    SourceType: 'Bill',
+    SourceID: entryID
   });
 
   DATA.journalEntries.push({
     EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 2,
     Account: apAccount.Name, Debit: 0, Credit: amount,
     Customer: '', Supplier: supplierName, ItemCode: '',
-    Description: `Bill from ${supplierName}`, Module: 'Bill'
+    Description: `Bill from ${supplierName}`, Module: 'Bill',
+    SourceType: 'Bill',
+    SourceID: entryID
   });
 
   toast('Bill created');
@@ -2077,8 +2171,8 @@ function makePayment(supplierName) {
   const amount = parseFloat(prompt("Payment Amount", "0"));
   if (!date || !supplierName || !amount) return toast('Payment not posted', 'error');
 
-const cashAccount = DATA.accounts.find(a => ['Cash','Bank'].includes(a.Name));
-const apAccount = DATA.accounts.find(a => a.Type === 'Liability');
+  const cashAccount = DATA.accounts.find(a => ['Cash','Bank'].includes(a.Name));
+  const apAccount = DATA.accounts.find(a => a.Type === 'Liability');
 
   const entryID = uid();
   const voucherNo = `PAY-${date.replace(/-/g,'')}-${entryID.slice(0,6)}`;
@@ -2087,20 +2181,23 @@ const apAccount = DATA.accounts.find(a => a.Type === 'Liability');
     EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 1,
     Account: apAccount.Name, Debit: amount, Credit: 0,
     Customer: '', Supplier: supplierName, ItemCode: '',
-    Description: `Payment to ${supplierName}`, Module: 'Payment'
+    Description: `Payment to ${supplierName}`, Module: 'Payment',
+    SourceType: 'Payment',
+    SourceID: entryID
   });
 
   DATA.journalEntries.push({
     EntryID: entryID, Date: date, VoucherNo: voucherNo, LineNumber: 2,
     Account: cashAccount.Name, Debit: 0, Credit: amount,
     Customer: '', Supplier: supplierName, ItemCode: '',
-    Description: `Payment to ${supplierName}`, Module: 'Payment'
+    Description: `Payment to ${supplierName}`, Module: 'Payment',
+    SourceType: 'Payment',
+    SourceID: entryID
   });
 
   toast('Payment made');
   renderView('suppliers');
 }
-
 
 
 function viewSupplierStatement(supplierName) {
@@ -2112,9 +2209,13 @@ function viewSupplierStatement(supplierName) {
   html += `<table>
     <thead>
       <tr>
-        <th>Date</th><th>Voucher</th><th>Description</th>
-        <th class="text-right">Debit</th><th class="text-right">Credit</th>
-        <th class="text-right">Balance</th><th>Action</th>
+        <th>Date</th>
+        <th>Voucher</th>
+        <th>Description</th>
+        <th class="text-right">Debit</th>
+        <th class="text-right">Credit</th>
+        <th class="text-right">Balance</th>
+        <th>Action</th>
       </tr>
     </thead>
     <tbody>`;
@@ -2124,11 +2225,13 @@ function viewSupplierStatement(supplierName) {
   entries.forEach(entry => {
     const debit = parseFloat(entry.Debit) || 0;
     const credit = parseFloat(entry.Credit) || 0;
-if (['Liability', 'Equity', 'Revenue', 'Income'].includes(getAccountType(entry.Account))) {
-  balance += credit - debit;
-} else {
-  balance += debit - credit;
-}
+
+    // Correct account type check
+    if (['Liability', 'Equity', 'Income'].includes(getAccountType(entry.Account))) {
+      balance += credit - debit;
+    } else {
+      balance += debit - credit;
+    }
 
     html += `<tr>
       <td>${entry.Date}</td>
@@ -2137,7 +2240,9 @@ if (['Liability', 'Equity', 'Revenue', 'Income'].includes(getAccountType(entry.A
       <td class="text-right">${formatCurrency(debit)}</td>
       <td class="text-right">${formatCurrency(credit)}</td>
       <td class="text-right">${formatCurrency(balance)}</td>
-      <td><button class="btn btn-small" onclick="showJournalEntry('${entry.EntryID}')">View</button></td>
+      <td>
+        <button class="btn btn-small" onclick="showJournalEntry('${entry.EntryID}')">View</button>
+      </td>
     </tr>`;
   });
 
@@ -2147,6 +2252,7 @@ if (['Liability', 'Equity', 'Revenue', 'Income'].includes(getAccountType(entry.A
   const container = document.getElementById('modalContainer') || document.body;
   container.innerHTML = `<div class="modal show">${html}<span class="close-modal" onclick="closeModal()">×</span></div>`;
 }
+
 
 
 /* ============================================================
@@ -2212,6 +2318,10 @@ function addInventoryItem() {
   if (!code || !name) return toast('Please enter code and name', 'error');
   if (qty < 0 || cost < 0) return toast('Quantity and Cost cannot be negative', 'error');
 
+  if (DATA.inventory.some(item => item.ItemCode === code)) {
+    return toast('Item code already exists', 'error');
+  }
+
   DATA.inventory.push({
     ItemCode: code,
     ItemName: name,
@@ -2225,7 +2335,6 @@ function addInventoryItem() {
   renderView('inventory');
 }
 
-
 function deleteInventoryItem(idx) {
   if (confirm('Delete this item?')) {
     DATA.inventory.splice(idx, 1);
@@ -2233,6 +2342,7 @@ function deleteInventoryItem(idx) {
     renderView('inventory');
   }
 }
+
 
 /* ============================================================
    REPORTS VIEW (WITH OPENING BALANCES INCLUDED)
@@ -2442,7 +2552,8 @@ function getAccountBalance(accountName) {
 
    
 function addManualEntry(accountName) {
-  if (!DATA.accounts.find(a => a.Name === accountName)) {
+  const account = DATA.accounts.find(a => a.Name === accountName);
+  if (!account) {
     toast('Account does not exist', 'error');
     return;
   }
@@ -2462,11 +2573,15 @@ function addManualEntry(accountName) {
   DATA.journalEntries.push({
     EntryID: entryID,
     Date: date,
+    VoucherNo: `MANUAL-${entryID.slice ? entryID.slice(0, 6) : entryID}`,
     Account: accountName,
     Debit: debit,
     Credit: credit,
     Description: desc,
-    VoucherNo: 'MANUAL'
+    Module: 'Manual',
+    Customer: '',
+    Supplier: '',
+    ItemCode: ''
   });
 
   toast('Manual entry added');
