@@ -1963,9 +1963,6 @@ function renderSuppliers(container) {
         <input type="text" id="suppContact" placeholder="Contact person">
         <input type="number" id="suppOpeningBalance" placeholder="Opening balance" step="0.01">
         <button class="btn btn-primary" onclick="addSupplier()">Add Supplier</button>
-        <button class="btn btn-small btn-success" onclick="createBill('${supp.Name}')">Bill</button>
-        <button class="btn btn-small btn-primary" onclick="makePayment('${supp.Name}')">Payment</button>
-
       </div>
 
       <table>
@@ -2036,7 +2033,9 @@ function getSupplierBalance(supplierName) {
 
   DATA.journalEntries.forEach(entry => {
     if (entry.Supplier === supplierName) {
-      balance += (parseFloat(entry.Credit) || 0) - (parseFloat(entry.Debit) || 0);
+      const debit = parseFloat(entry.Debit) || 0;
+      const credit = parseFloat(entry.Credit) || 0;
+      balance += credit - debit;
     }
   });
 
@@ -2048,8 +2047,9 @@ function createBill(supplierName) {
   const amount = parseFloat(prompt("Bill Amount", "0"));
   if (!date || !supplierName || !amount) return toast('Bill not created', 'error');
 
-  const apAccount = DATA.accounts.find(a => a.Name.includes('Payable'));
-  const expenseAccount = DATA.accounts.find(a => a.Type === 'Expense');
+ const apAccount = DATA.accounts.find(a => a.Type === 'Liability');
+const expenseAccount = DATA.accounts.find(a => a.Type === 'Expense');
+
 
   const entryID = uid();
   const voucherNo = `BILL-${date.replace(/-/g,'')}-${entryID.slice(0,6)}`;
@@ -2077,8 +2077,8 @@ function makePayment(supplierName) {
   const amount = parseFloat(prompt("Payment Amount", "0"));
   if (!date || !supplierName || !amount) return toast('Payment not posted', 'error');
 
-  const cashAccount = DATA.accounts.find(a => a.Name === 'Cash' || a.Name === 'Bank');
-  const apAccount = DATA.accounts.find(a => a.Name.includes('Payable'));
+const cashAccount = DATA.accounts.find(a => ['Cash','Bank'].includes(a.Name));
+const apAccount = DATA.accounts.find(a => a.Type === 'Liability');
 
   const entryID = uid();
   const voucherNo = `PAY-${date.replace(/-/g,'')}-${entryID.slice(0,6)}`;
@@ -2124,12 +2124,11 @@ function viewSupplierStatement(supplierName) {
   entries.forEach(entry => {
     const debit = parseFloat(entry.Debit) || 0;
     const credit = parseFloat(entry.Credit) || 0;
-
-    if (['Liability', 'Equity'].includes(getAccountType(entry.Account))) {
-      balance += credit - debit;
-    } else {
-      balance += debit - credit;
-    }
+if (['Liability', 'Equity', 'Revenue', 'Income'].includes(getAccountType(entry.Account))) {
+  balance += credit - debit;
+} else {
+  balance += debit - credit;
+}
 
     html += `<tr>
       <td>${entry.Date}</td>
